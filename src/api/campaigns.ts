@@ -1,9 +1,36 @@
 // API routes for campaign management
 import express from "express";
-import { smsQueue, campaignQueue } from "../lib/queue";
+import { campaignQueue } from "../lib/queue";
 import { supabaseAdmin } from "../lib/supabase";
 
 const router = express.Router();
+
+// Debug endpoint to test Supabase connection
+router.get("/api/debug/campaigns", async (req, res) => {
+  try {
+    const { data: campaigns, error } = await supabaseAdmin
+      .from("campaigns")
+      .select("*")
+      .limit(5);
+
+    if (error) {
+      return res.status(500).json({ 
+        error: "Supabase query failed", 
+        details: error.message,
+        code: error.code 
+      });
+    }
+
+    res.json({
+      success: true,
+      campaignCount: campaigns?.length || 0,
+      campaigns: campaigns || []
+    });
+  } catch (error) {
+    console.error("Debug campaigns error:", error);
+    res.status(500).json({ error: "Debug query failed", details: error.message });
+  }
+});
 
 // Start a campaign
 router.post("/api/campaigns/:id/start", async (req, res) => {
@@ -29,7 +56,12 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
       .in("id", patientIds);
 
     if (contactsError || !contacts) {
-      return res.status(400).json({ error: "Failed to get contacts", details: contactsError?.message });
+      return res
+        .status(400)
+        .json({
+          error: "Failed to get contacts",
+          details: contactsError?.message,
+        });
     }
 
     // Add campaign start job to queue
@@ -38,11 +70,11 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
       patientIds,
     });
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: "Campaign started",
       campaignId,
-      patientCount: contacts.length
+      patientCount: contacts.length,
     });
   } catch (error) {
     console.error("Campaign start error:", error);
