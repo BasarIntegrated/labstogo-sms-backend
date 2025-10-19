@@ -22,14 +22,14 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
       return res.status(404).json({ error: "Campaign not found" });
     }
 
-    // Get patient details
-    const { data: patients, error: patientsError } = await supabaseAdmin
-      .from("patients")
+    // Get contact details (patients table might be renamed to contacts)
+    const { data: contacts, error: contactsError } = await supabaseAdmin
+      .from("contacts")
       .select("*")
       .in("id", patientIds);
 
-    if (patientsError || !patients) {
-      return res.status(400).json({ error: "Failed to get patients" });
+    if (contactsError || !contacts) {
+      return res.status(400).json({ error: "Failed to get contacts", details: contactsError?.message });
     }
 
     // Add campaign start job to queue
@@ -42,7 +42,7 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
       success: true, 
       message: "Campaign started",
       campaignId,
-      patientCount: patients.length
+      patientCount: contacts.length
     });
   } catch (error) {
     console.error("Campaign start error:", error);
