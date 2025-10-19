@@ -60,13 +60,20 @@ export const sendSMS = async (
     const shouldUseVirtualNumber =
       isDevelopment && process.env.DEV_ROUTE_ALL_SMS === "true";
 
+    // Twilio draft mode: Route all SMS to specified test number
+    const draftModeTestNumber = "+639688800575";
+    const isDraftMode = process.env.TWILIO_DRAFT_MODE === "true";
+    const shouldUseDraftNumber = isDraftMode;
+
     // Use your Twilio phone number as the "from" number
     const fromNumber = isSandboxMode
       ? "+15005550006" // Twilio sandbox number
       : process.env.TWILIO_PHONE_NUMBER;
 
     // Determine the actual recipient
-    const actualRecipient = shouldUseVirtualNumber
+    const actualRecipient = shouldUseDraftNumber
+      ? draftModeTestNumber
+      : shouldUseVirtualNumber
       ? virtualPhoneNumber
       : phoneNumber;
 
@@ -75,12 +82,17 @@ export const sendSMS = async (
     if (isSandboxMode) {
       finalMessage = `[SANDBOX] ${finalMessage}`;
     }
+    if (shouldUseDraftNumber) {
+      finalMessage = `[DRAFT] Original: ${phoneNumber}\n${finalMessage}`;
+    }
     if (shouldUseVirtualNumber) {
       finalMessage = `[DEV] Original: ${phoneNumber}\n${finalMessage}`;
     }
 
     console.log(
       `📱 Sending SMS ${isSandboxMode ? "(SANDBOX)" : ""}${
+        shouldUseDraftNumber ? " [DRAFT-MODE]" : ""
+      }${
         shouldUseVirtualNumber ? " [DEV-VIRTUAL]" : ""
       }: ${phoneNumber} -> ${actualRecipient} (from: ${fromNumber})`
     );

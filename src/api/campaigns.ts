@@ -6,7 +6,7 @@ import { supabaseAdmin } from "../lib/supabase";
 const router = express.Router();
 
 // Debug endpoint to test Supabase connection
-router.get("/api/debug/campaigns", async (req, res) => {
+router.get("/debug/campaigns", async (req, res) => {
   try {
     const { data: campaigns, error } = await supabaseAdmin
       .from("campaigns")
@@ -14,26 +14,28 @@ router.get("/api/debug/campaigns", async (req, res) => {
       .limit(5);
 
     if (error) {
-      return res.status(500).json({ 
-        error: "Supabase query failed", 
+      return res.status(500).json({
+        error: "Supabase query failed",
         details: error.message,
-        code: error.code 
+        code: error.code,
       });
     }
 
     res.json({
       success: true,
       campaignCount: campaigns?.length || 0,
-      campaigns: campaigns || []
+      campaigns: campaigns || [],
     });
   } catch (error) {
     console.error("Debug campaigns error:", error);
-    res.status(500).json({ error: "Debug query failed", details: error.message });
+    res
+      .status(500)
+      .json({ error: "Debug query failed", details: error.message });
   }
 });
 
 // Start a campaign
-router.post("/api/campaigns/:id/start", async (req, res) => {
+router.post("/campaigns/:id/start", async (req, res) => {
   try {
     const { id: campaignId } = req.params;
     const { patientIds } = req.body;
@@ -56,12 +58,10 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
       .in("id", patientIds);
 
     if (contactsError || !contacts) {
-      return res
-        .status(400)
-        .json({
-          error: "Failed to get contacts",
-          details: contactsError?.message,
-        });
+      return res.status(400).json({
+        error: "Failed to get contacts",
+        details: contactsError?.message,
+      });
     }
 
     // Add campaign start job to queue
@@ -83,7 +83,7 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
 });
 
 // Get campaign status
-router.get("/api/campaigns/:id/status", async (req, res) => {
+router.get("/campaigns/:id/status", async (req, res) => {
   try {
     const { id: campaignId } = req.params;
 
