@@ -82,6 +82,127 @@ app.get("/queue/status", async (req, res) => {
   }
 });
 
+// Debug endpoint to test Supabase connection
+app.get("/debug/supabase", async (req, res) => {
+  try {
+    const { supabaseAdmin } = await import("./lib/supabase");
+    
+    // Test basic connection
+    const { data, error } = await supabaseAdmin
+      .from("campaigns")
+      .select("id, name, status")
+      .limit(3);
+
+    if (error) {
+      return res.status(500).json({
+        error: "Supabase connection failed",
+        details: error.message,
+        code: error.code,
+        hint: error.hint,
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Supabase connection successful",
+      campaignCount: data?.length || 0,
+      campaigns: data || [],
+      env: {
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL ? "Set" : "Not set",
+        supabaseServiceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ? "Set" : "Not set",
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      error: "Debug query failed",
+      details: error.message,
+      stack: error.stack,
+    });
+  }
+});
+
+// Manual queue processing endpoint
+app.post("/api/process-pending-sms", async (req, res) => {
+  try {
+    const { supabaseAdmin } = await import("./lib/supabase");
+    const { smsQueue } = await import("./lib/queue");
+
+    // Get pending SMS messages
+    const { data: pendingSMS, error: smsError } = await supabaseAdmin
+      .from("sms_messages")
+      .select(`
+        id,
+        campaign_id,
+        contact_id,
+        phone_number,
+        message,
+        status,
+        campaigns (
+          id,
+          name,
+          message_template,
+          status
+        ),
+        contacts (
+          id,
+          first_name,
+          last_name,
+          phone_number
+        )
+      `)
+      .eq("status", "pending")
+      .limit(10);
+
+    if (smsError) {
+      return res.status(500).json({
+        error: "Failed to fetch pending SMS",
+        details: smsError.message,
+      });
+    }
+
+    if (!pendingSMS || pendingSMS.length === 0) {
+      return res.json({
+        success: true,
+        message: "No pending SMS messages found",
+        processed: 0,
+      });
+    }
+
+    // Add SMS jobs to queue
+    const smsJobs = pendingSMS.map((sms, index) => ({
+      name: "send-sms",
+      data: {
+        campaignId: sms.campaign_id,
+        patientId: sms.contact_id,
+        phoneNumber: sms.phone_number,
+        message: sms.message,
+        patient: sms.contacts,
+        campaign: sms.campaigns,
+      },
+      delay: index * 100, // 100ms delay between each job
+    }));
+
+    await smsQueue.addBulk(smsJobs);
+
+    res.json({
+      success: true,
+      message: `Added ${smsJobs.length} SMS jobs to queue`,
+      processed: smsJobs.length,
+      jobs: smsJobs.map(job => ({
+        campaignId: job.data.campaignId,
+        patientId: job.data.patientId,
+        phoneNumber: job.data.phoneNumber,
+      })),
+    });
+  } catch (error: any) {
+    console.error("Manual queue processing error:", error);
+    res.status(500).json({
+      error: "Failed to process pending SMS",
+      details: error.message,
+    });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`🚀 SMS Backend Service running on port ${PORT}`);
