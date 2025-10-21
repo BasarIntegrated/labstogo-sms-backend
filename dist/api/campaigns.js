@@ -8,8 +8,35 @@ const express_1 = __importDefault(require("express"));
 const queue_1 = require("../lib/queue");
 const supabase_1 = require("../lib/supabase");
 const router = express_1.default.Router();
+// Debug endpoint to test Supabase connection
+router.get("/debug/campaigns", async (req, res) => {
+    try {
+        const { data: campaigns, error } = await supabase_1.supabaseAdmin
+            .from("campaigns")
+            .select("*")
+            .limit(5);
+        if (error) {
+            return res.status(500).json({
+                error: "Supabase query failed",
+                details: error.message,
+                code: error.code,
+            });
+        }
+        res.json({
+            success: true,
+            campaignCount: campaigns?.length || 0,
+            campaigns: campaigns || [],
+        });
+    }
+    catch (error) {
+        console.error("Debug campaigns error:", error);
+        res
+            .status(500)
+            .json({ error: "Debug query failed", details: error.message });
+    }
+});
 // Start a campaign
-router.post("/api/campaigns/:id/start", async (req, res) => {
+router.post("/campaigns/:id/start", async (req, res) => {
     try {
         const { id: campaignId } = req.params;
         const { patientIds } = req.body;
@@ -22,13 +49,16 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
         if (campaignError || !campaign) {
             return res.status(404).json({ error: "Campaign not found" });
         }
-        // Get patient details
-        const { data: patients, error: patientsError } = await supabase_1.supabaseAdmin
-            .from("patients")
+        // Get contact details (patients table might be renamed to contacts)
+        const { data: contacts, error: contactsError } = await supabase_1.supabaseAdmin
+            .from("contacts")
             .select("*")
             .in("id", patientIds);
-        if (patientsError || !patients) {
-            return res.status(400).json({ error: "Failed to get patients" });
+        if (contactsError || !contacts) {
+            return res.status(400).json({
+                error: "Failed to get contacts",
+                details: contactsError?.message,
+            });
         }
         // Add campaign start job to queue
         await queue_1.campaignQueue.add("start-campaign", {
@@ -39,7 +69,7 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
             success: true,
             message: "Campaign started",
             campaignId,
-            patientCount: patients.length
+            patientCount: contacts.length,
         });
     }
     catch (error) {
@@ -48,7 +78,7 @@ router.post("/api/campaigns/:id/start", async (req, res) => {
     }
 });
 // Get campaign status
-router.get("/api/campaigns/:id/status", async (req, res) => {
+router.get("/campaigns/:id/status", async (req, res) => {
     try {
         const { id: campaignId } = req.params;
         const { data: campaign, error } = await supabase_1.supabaseAdmin

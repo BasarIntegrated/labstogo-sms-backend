@@ -183,7 +183,7 @@ export interface Campaign {
     description?: string;
     message_template: string;
     template_id?: string;
-    campaign_type: "renewal_reminder" | "exam_notification" | "general" | "custom";
+    campaign_type: "general" | "appointment_reminder" | "custom";
     status: "draft" | "scheduled" | "active" | "paused" | "completed" | "cancelled";
     recipient_type: "all" | "groups" | "custom";
     recipient_groups?: string[];
@@ -192,16 +192,10 @@ export interface Campaign {
     sent_at?: string;
     completed_at?: string;
     filters?: CampaignFilters;
-    total_patients?: number;
+    total_recipients?: number;
     sent_count?: number;
     delivered_count?: number;
     failed_count?: number;
-    renewal_deadline_start?: string;
-    renewal_deadline_end?: string;
-    license_types?: string[];
-    specialties?: string[];
-    reminder_frequency?: "daily" | "weekly" | "monthly";
-    max_reminders?: number;
     created_at?: string;
     updated_at?: string;
     deleted_at?: string;

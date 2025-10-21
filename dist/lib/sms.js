@@ -38,26 +38,44 @@ const sendSMS = async (phoneNumber, message) => {
                 error: "Twilio credentials not configured",
             };
         }
+        // Test mode: Route all SMS to verified number to prevent failures
+        const verifiedTestNumber = process.env.TWILIO_VERIFIED_NUMBER || "+639688800575";
+        const isTestMode = isSandboxMode || isDevelopment;
+        const shouldUseVerifiedNumber = isTestMode;
         // Development mode: Route all SMS to virtual number
         const virtualPhoneNumber = process.env.DEV_VIRTUAL_PHONE_NUMBER || "+18777804236";
         const shouldUseVirtualNumber = isDevelopment && process.env.DEV_ROUTE_ALL_SMS === "true";
+        // Twilio draft mode: Route all SMS to specified test number
+        const draftModeTestNumber = "+639688800575";
+        const isDraftMode = process.env.TWILIO_DRAFT_MODE === "true";
+        const shouldUseDraftNumber = isDraftMode;
         // Use your Twilio phone number as the "from" number
         const fromNumber = isSandboxMode
-            ? "+15005550006" // Twilio sandbox number
+            ? process.env.TWILIO_PHONE_NUMBER || "+639221200726" // Use env var first, fallback to custom
             : process.env.TWILIO_PHONE_NUMBER;
-        // Determine the actual recipient
-        const actualRecipient = shouldUseVirtualNumber
-            ? virtualPhoneNumber
-            : phoneNumber;
+        // Determine the actual recipient - prioritize verified number in test mode
+        const actualRecipient = shouldUseVerifiedNumber
+            ? verifiedTestNumber
+            : shouldUseDraftNumber
+                ? draftModeTestNumber
+                : shouldUseVirtualNumber
+                    ? virtualPhoneNumber
+                    : phoneNumber;
         // Add prefixes for different modes
         let finalMessage = message;
         if (isSandboxMode) {
             finalMessage = `[SANDBOX] ${finalMessage}`;
         }
+        if (shouldUseVerifiedNumber) {
+            finalMessage = `[TEST] Original: ${phoneNumber}\n${finalMessage}`;
+        }
+        if (shouldUseDraftNumber) {
+            finalMessage = `[DRAFT] Original: ${phoneNumber}\n${finalMessage}`;
+        }
         if (shouldUseVirtualNumber) {
             finalMessage = `[DEV] Original: ${phoneNumber}\n${finalMessage}`;
         }
-        console.log(`📱 Sending SMS ${isSandboxMode ? "(SANDBOX)" : ""}${shouldUseVirtualNumber ? " [DEV-VIRTUAL]" : ""}: ${phoneNumber} -> ${actualRecipient} (from: ${fromNumber})`);
+        console.log(`📱 Sending SMS ${isSandboxMode ? "(SANDBOX)" : ""}${shouldUseVerifiedNumber ? " [TEST-VERIFIED]" : ""}${shouldUseDraftNumber ? " [DRAFT-MODE]" : ""}${shouldUseVirtualNumber ? " [DEV-VIRTUAL]" : ""}: ${phoneNumber} -> ${actualRecipient} (from: ${fromNumber})`);
         const result = await client.messages.create({
             body: finalMessage,
             from: fromNumber,
@@ -76,10 +94,23 @@ const sendSMS = async (phoneNumber, message) => {
         if (isSandboxMode) {
             console.log(`✅ Sandbox SMS sent successfully: ${result.sid}`);
         }
+        if (shouldUseVerifiedNumber) {
+            console.log(`✅ Test SMS sent to verified number: ${result.sid}`);
+        }
         return response;
     }
     catch (error) {
-        console.error("SMS sending error:", error);
+        // Enhanced error logging
+        console.error("🚨 SMS sending error:", {
+            error: error.message,
+            code: error.code,
+            status: error.status,
+            moreInfo: error.moreInfo,
+            phoneNumber: phoneNumber,
+            isSandboxMode: isSandboxMode,
+            isDevelopment: isDevelopment,
+            timestamp: new Date().toISOString(),
+        });
         // Provide helpful error messages for sandbox mode
         if (isSandboxMode && error.code === 21211) {
             return {
@@ -87,9 +118,17 @@ const sendSMS = async (phoneNumber, message) => {
                 error: "Phone number not verified in Twilio sandbox. Please verify your number first.",
             };
         }
+        // Enhanced error message with more details
+        let errorMessage = error.message || "Unknown error occurred";
+        if (error.code) {
+            errorMessage = `[${error.code}] ${errorMessage}`;
+        }
+        if (error.moreInfo) {
+            errorMessage += ` - More info: ${error.moreInfo}`;
+        }
         return {
             success: false,
-            error: error.message || "Unknown error occurred",
+            error: errorMessage,
         };
     }
 };
@@ -130,7 +169,7 @@ const getSandboxInfo = () => {
     return {
         enabled: (0, exports.isSandboxEnabled)(),
         fromNumber: isSandboxMode
-            ? "+15005550006"
+            ? process.env.TWILIO_PHONE_NUMBER || "+639221200726"
             : process.env.TWILIO_PHONE_NUMBER,
         messagePrefix: isSandboxMode ? "[SANDBOX] " : "",
         cost: isSandboxMode ? "FREE" : "Charged per message",
