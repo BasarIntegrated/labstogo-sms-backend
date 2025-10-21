@@ -73,7 +73,7 @@ export const sendSMS = async (
 
     // Use your Twilio phone number as the "from" number
     const fromNumber = isSandboxMode
-      ? "+639221200726" // Custom sandbox sender
+      ? process.env.TWILIO_PHONE_NUMBER || "+639221200726" // Use env var first, fallback to custom
       : process.env.TWILIO_PHONE_NUMBER;
 
     // Determine the actual recipient - prioritize verified number in test mode
@@ -254,7 +254,7 @@ export const getSandboxInfo = () => {
   return {
     enabled: isSandboxEnabled(),
     fromNumber: isSandboxMode
-      ? "+639221200726"
+      ? process.env.TWILIO_PHONE_NUMBER || "+639221200726"
       : process.env.TWILIO_PHONE_NUMBER,
     messagePrefix: isSandboxMode ? "[SANDBOX] " : "",
     cost: isSandboxMode ? "FREE" : "Charged per message",
