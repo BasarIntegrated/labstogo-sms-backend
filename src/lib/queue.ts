@@ -5,7 +5,7 @@ import { formatPhoneNumber, personalizeMessage, sendSMS } from "./sms";
 import { supabaseAdmin } from "./supabase";
 
 // Redis connection - Use Railway Redis URL if available
-const connection = process.env.REDIS_URL 
+const connection = process.env.REDIS_URL
   ? new IORedis(process.env.REDIS_URL, {
       maxRetriesPerRequest: null, // Required for BullMQ blocking operations
     })
@@ -77,8 +77,8 @@ export const smsWorker = new Worker<SMSJobData>(
         .eq("id", campaignId)
         .single();
 
-      if (!currentCampaign || currentCampaign.status !== "running") {
-        throw new Error("Campaign is not running");
+      if (!currentCampaign || currentCampaign.status !== "active") {
+        throw new Error("Campaign is not active");
       }
 
       // Personalize the message
@@ -117,18 +117,63 @@ export const smsWorker = new Worker<SMSJobData>(
         throw new Error(smsResult.error || "SMS sending failed");
       }
     } catch (error: any) {
-      console.error(`SMS job failed for patient ${patientId}:`, error.message);
+      // Enhanced error logging for queue processing
+      console.error(`🚨 SMS job failed for patient ${patientId}:`, {
+        error: error.message,
+        code: error.code,
+        status: error.status,
+        moreInfo: error.moreInfo,
+        campaignId: campaignId,
+        patientId: patientId,
+        phoneNumber: phoneNumber,
+        timestamp: new Date().toISOString(),
+        stack: error.stack,
+      });
 
-      // Update SMS message record with error
-      await supabaseAdmin
-        .from("sms_messages")
-        .update({
-          status: "failed",
-          error_message: error.message,
-          failed_at: new Date().toISOString(),
-        })
-        .eq("campaign_id", campaignId)
-        .eq("contact_id", patientId);
+      // Update SMS message record with error and retry tracking
+      try {
+        // First, get the current retry count
+        const { data: currentSMS } = await supabaseAdmin
+          .from("sms_messages")
+          .select("retry_count")
+          .eq("campaign_id", campaignId)
+          .eq("contact_id", patientId)
+          .single();
+
+        const currentRetryCount = currentSMS?.retry_count || 0;
+
+        const updateResult = await supabaseAdmin
+          .from("sms_messages")
+          .update({
+            status: "failed",
+            retry_count: currentRetryCount + 1,
+            last_retry_at: new Date().toISOString(),
+            provider_response: {
+              error: error.message,
+              code: error.code,
+              status: error.status,
+              moreInfo: error.moreInfo,
+              timestamp: new Date().toISOString(),
+              retryCount: currentRetryCount + 1,
+            },
+            failed_at: new Date().toISOString(),
+          })
+          .eq("campaign_id", campaignId)
+          .eq("contact_id", patientId);
+
+        if (updateResult.error) {
+          console.error(
+            `❌ Failed to update SMS message in database:`,
+            updateResult.error
+          );
+        } else {
+          console.log(
+            `✅ Updated SMS message status to failed for patient ${patientId}`
+          );
+        }
+      } catch (dbError: any) {
+        console.error(`❌ Database update error for SMS message:`, dbError);
+      }
 
       // Update campaign failed count
       await supabaseAdmin

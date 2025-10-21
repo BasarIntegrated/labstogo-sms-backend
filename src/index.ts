@@ -176,10 +176,12 @@ app.post("/api/process-pending-sms", async (req, res) => {
         patientId: sms.contact_id,
         phoneNumber: sms.phone_number,
         message: sms.message,
-        patient: sms.contacts,
-        campaign: sms.campaigns,
+        patient: sms.contacts as any, // Type assertion for compatibility
+        campaign: sms.campaigns as any, // Type assertion for compatibility
       },
-      delay: index * 100, // 100ms delay between each job
+      opts: {
+        delay: index * 100, // 100ms delay between each job
+      },
     }));
 
     await smsQueue.addBulk(smsJobs);

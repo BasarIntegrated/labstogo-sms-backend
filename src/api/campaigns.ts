@@ -26,7 +26,7 @@ router.get("/debug/campaigns", async (req, res) => {
       campaignCount: campaigns?.length || 0,
       campaigns: campaigns || [],
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Debug campaigns error:", error);
     res
       .status(500)
